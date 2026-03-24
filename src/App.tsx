@@ -19,7 +19,9 @@ interface Group {
 // Tipos de contenido que se pueden enviar
 export type MessageContent =
   | { type: 'text'; text: string }
-  | { type: 'component'; componentType: string; props?: Record<string, unknown> };
+  | { type: 'component'; componentType: string; props?: Record<string, unknown> }
+  | { type: 'image'; src: string; alt?: string }
+  | { type: 'file'; name: string; size: string; mimeType: string };
 
 // Componentes disponibles para enviar
 export const AVAILABLE_COMPONENTS = [

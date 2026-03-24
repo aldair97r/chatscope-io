@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   MainContainer,
   ChatContainer,
@@ -29,7 +29,10 @@ interface User {
 }
 
 interface ChatMessage {
-  content: { type: 'text'; text: string } | { type: 'component'; componentType: string; props?: Record<string, unknown> };
+  content: { type: 'text'; text: string }
+    | { type: 'component'; componentType: string; props?: Record<string, unknown> }
+    | { type: 'image'; src: string; alt?: string }
+    | { type: 'file'; name: string; size: string; mimeType: string };
   senderId: string;
   receiverId: string;
   sentTime: string;
@@ -57,7 +60,7 @@ interface Group {
 interface ChatWindowProps {
   currentUser: User;
   allMessages: ChatMessage[];
-  onSendMessage: (content: { type: 'text'; text: string } | { type: 'component'; componentType: string; props?: Record<string, unknown> }, senderId: string, receiverId: string) => void;
+  onSendMessage: (content: ChatMessage['content'], senderId: string, receiverId: string) => void;
   onTyping: (senderId: string, senderName: string, receiverId: string, isTyping: boolean) => void;
   typingUsers: TypingState;
   userStatuses: Record<string, UserStatus>;
@@ -72,6 +75,37 @@ export const ChatWindow = ({ currentUser, allMessages, onSendMessage, onTyping, 
   const [readCounts, setReadCounts] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [showComponentSelector, setShowComponentSelector] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const size = (file.size / 1024).toFixed(1);
+    const sizeStr = file.size > 1024 * 1024
+      ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+      : `${size} KB`;
+
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        onSendMessage(
+          { type: 'image', src: e.target?.result as string, alt: file.name },
+          currentUser.id,
+          selectedConversationId
+        );
+      };
+      reader.readAsDataURL(file);
+    } else {
+      onSendMessage(
+        { type: 'file', name: file.name, size: sizeStr, mimeType: file.type },
+        currentUser.id,
+        selectedConversationId
+      );
+    }
+
+    event.target.value = '';
+  };
 
   // Helper para encontrar usuario por ID
   const findUser = (id: string) => allUsers.find(u => u.id === id);
@@ -161,7 +195,10 @@ export const ChatWindow = ({ currentUser, allMessages, onSendMessage, onTyping, 
                   info={isFriendTyping
                     ? <span className="typing-dots">typing<span>.</span><span>.</span><span>.</span></span>
                     : (lastMsg
-                        ? (lastMsg.content.type === 'text' ? lastMsg.content.text : `[${lastMsg.content.componentType}]`)
+                        ? (lastMsg.content.type === 'text' ? lastMsg.content.text
+                            : lastMsg.content.type === 'component' ? `[${lastMsg.content.componentType}]`
+                            : lastMsg.content.type === 'image' ? '📷 Imagen'
+                            : `📎 ${lastMsg.content.name}`)
                         : friend.status)
                   }
                   lastActivityTime={lastTime}
@@ -195,7 +232,10 @@ export const ChatWindow = ({ currentUser, allMessages, onSendMessage, onTyping, 
                   info={groupTypers.length > 0
                     ? <span className="typing-dots">typing<span>.</span><span>.</span><span>.</span></span>
                     : (lastGroupMsg
-                        ? (lastGroupMsg.content.type === 'text' ? lastGroupMsg.content.text : `[${lastGroupMsg.content.componentType}]`)
+                        ? (lastGroupMsg.content.type === 'text' ? lastGroupMsg.content.text
+                            : lastGroupMsg.content.type === 'component' ? `[${lastGroupMsg.content.componentType}]`
+                            : lastGroupMsg.content.type === 'image' ? '📷 Imagen'
+                            : `📎 ${lastGroupMsg.content.name}`)
                         : group.members.filter((id: string) => id !== currentUser.id).map((id: string) => findUser(id)?.name).filter(Boolean).join(", "))
                   }
                   lastActivityTime={lastGroupTime}
@@ -264,6 +304,38 @@ export const ChatWindow = ({ currentUser, allMessages, onSendMessage, onTyping, 
                         />
                       </Message.CustomContent>
                     )}
+                    {m.content.type === 'image' && (
+                      <Message.CustomContent>
+                        <img
+                          src={(m.content as { src: string; alt?: string }).src}
+                          alt={(m.content as { src: string; alt?: string }).alt}
+                          style={{ maxWidth: '200px', maxHeight: '200px', borderRadius: '8px', cursor: 'pointer' }}
+                          onClick={() => window.open((m.content as { src: string }).src, '_blank')}
+                        />
+                      </Message.CustomContent>
+                    )}
+                    {m.content.type === 'file' && (
+                      <Message.CustomContent>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '10px 14px',
+                            backgroundColor: '#f0f0f0',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => alert(`Archivo: ${(m.content as { name: string; size: string }).name}\nTamaño: ${(m.content as { name: string; size: string }).size}`)}
+                        >
+                          <span style={{ fontSize: '24px' }}>📎</span>
+                          <div>
+                            <div style={{ fontWeight: 500, fontSize: '14px' }}>{m.content.name}</div>
+                            <div style={{ fontSize: '12px', color: '#666' }}>{m.content.size}</div>
+                          </div>
+                        </div>
+                      </Message.CustomContent>
+                    )}
                   </Message>
                 </span>
               );
@@ -281,6 +353,29 @@ export const ChatWindow = ({ currentUser, allMessages, onSendMessage, onTyping, 
               flexWrap: 'wrap',
             }}
           >
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                padding: '6px 12px',
+                backgroundColor: '#28a745',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px',
+              }}
+              title="Subir imagen o archivo"
+            >
+              📷 Imagen/Archivo
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              onChange={handleFileSelect}
+              accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain"
+            />
+
             <button
               onClick={() => setShowComponentSelector(!showComponentSelector)}
               style={{
