@@ -15,8 +15,11 @@ import {
   VideoCallButton,
   TypingIndicator,
   MessageSeparator,
+  InputToolbox,
 } from "@chatscope/chat-ui-kit-react";
 import "@chatscope/chat-ui-kit-styles/dist/default/styles.min.css";
+import { ComponentRenderer } from "./ComponentRenderer";
+import { AVAILABLE_COMPONENTS } from "../App";
 
 interface User {
   id: string;
@@ -26,7 +29,7 @@ interface User {
 }
 
 interface ChatMessage {
-  message: string;
+  content: { type: 'text'; text: string } | { type: 'component'; componentType: string; props?: Record<string, unknown> };
   senderId: string;
   receiverId: string;
   sentTime: string;
@@ -54,7 +57,7 @@ interface Group {
 interface ChatWindowProps {
   currentUser: User;
   allMessages: ChatMessage[];
-  onSendMessage: (text: string, senderId: string, receiverId: string) => void;
+  onSendMessage: (content: { type: 'text'; text: string } | { type: 'component'; componentType: string; props?: Record<string, unknown> }, senderId: string, receiverId: string) => void;
   onTyping: (senderId: string, senderName: string, receiverId: string, isTyping: boolean) => void;
   typingUsers: TypingState;
   userStatuses: Record<string, UserStatus>;
@@ -68,6 +71,7 @@ export const ChatWindow = ({ currentUser, allMessages, onSendMessage, onTyping, 
   const [selectedConversationId, setSelectedConversationId] = useState<string>(friends[0]?.id ?? groups[0]?.id ?? "");
   const [readCounts, setReadCounts] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [showComponentSelector, setShowComponentSelector] = useState(false);
 
   // Helper para encontrar usuario por ID
   const findUser = (id: string) => allUsers.find(u => u.id === id);
@@ -156,7 +160,9 @@ export const ChatWindow = ({ currentUser, allMessages, onSendMessage, onTyping, 
                   lastSenderName={lastMsg ? (lastMsg.senderId === currentUser.id ? currentUser.name : friend.name) : friend.name}
                   info={isFriendTyping
                     ? <span className="typing-dots">typing<span>.</span><span>.</span><span>.</span></span>
-                    : (lastMsg?.message ?? friend.status)
+                    : (lastMsg
+                        ? (lastMsg.content.type === 'text' ? lastMsg.content.text : `[${lastMsg.content.componentType}]`)
+                        : friend.status)
                   }
                   lastActivityTime={lastTime}
                   active={friend.id === selectedConversationId}
@@ -188,7 +194,9 @@ export const ChatWindow = ({ currentUser, allMessages, onSendMessage, onTyping, 
                   lastSenderName={lastSenderName}
                   info={groupTypers.length > 0
                     ? <span className="typing-dots">typing<span>.</span><span>.</span><span>.</span></span>
-                    : (lastGroupMsg?.message ?? group.members.filter((id: string) => id !== currentUser.id).map((id: string) => findUser(id)?.name).filter(Boolean).join(", "))
+                    : (lastGroupMsg
+                        ? (lastGroupMsg.content.type === 'text' ? lastGroupMsg.content.text : `[${lastGroupMsg.content.componentType}]`)
+                        : group.members.filter((id: string) => id !== currentUser.id).map((id: string) => findUser(id)?.name).filter(Boolean).join(", "))
                   }
                   lastActivityTime={lastGroupTime}
                   active={selectedConversationId === group.id}
@@ -239,7 +247,7 @@ export const ChatWindow = ({ currentUser, allMessages, onSendMessage, onTyping, 
                   {showDateSeparator && <MessageSeparator>{dateStr}</MessageSeparator>}
                   <Message
                     model={{
-                      message: m.message,
+                      message: m.content.type === 'text' ? m.content.text : '',
                       sentTime: m.sentTime,
                       sender: sender?.name ?? m.senderId,
                       direction: isOwn ? "outgoing" : "incoming",
@@ -248,16 +256,99 @@ export const ChatWindow = ({ currentUser, allMessages, onSendMessage, onTyping, 
                   >
                     <Avatar src={isOwn ? currentUser.avatar : (sender?.avatar ?? "")} />
                     <Message.Footer sentTime={time} />
+                    {m.content.type === 'component' && (
+                      <Message.CustomContent>
+                        <ComponentRenderer
+                          type={m.content.componentType}
+                          props={m.content.props}
+                        />
+                      </Message.CustomContent>
+                    )}
                   </Message>
                 </span>
               );
             })}
           </MessageList>
 
+          <InputToolbox
+            style={{
+              display: 'flex',
+              gap: '8px',
+              padding: '8px 12px',
+              backgroundColor: '#f8f9fa',
+              borderTop: '1px solid #d1d1d1',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
+            <button
+              onClick={() => setShowComponentSelector(!showComponentSelector)}
+              style={{
+                padding: '6px 12px',
+                backgroundColor: showComponentSelector ? '#e0e0e0' : '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px',
+              }}
+            >
+              {showComponentSelector ? '✕ Cancelar' : '📎 Componente'}
+            </button>
+
+            {showComponentSelector && (
+              <>
+                {AVAILABLE_COMPONENTS.map((comp) => (
+                  <button
+                    key={comp.id}
+                    onClick={() => {
+                      const defaultProps: Record<string, unknown> = {};
+                      switch (comp.id) {
+                        case 'button':
+                          defaultProps.label = 'Click me';
+                          defaultProps.color = '#007bff';
+                          defaultProps.onClickMessage = 'Button clicked!';
+                          break;
+                        case 'card':
+                          defaultProps.title = 'Card Title';
+                          defaultProps.description = 'This is a card component';
+                          break;
+                        case 'alert':
+                          defaultProps.severity = 'info';
+                          defaultProps.message = 'This is an alert message';
+                          break;
+                        case 'badge':
+                          defaultProps.label = 'New';
+                          defaultProps.color = '#28a745';
+                          break;
+                      }
+                      onSendMessage(
+                        { type: 'component', componentType: comp.id, props: defaultProps },
+                        currentUser.id,
+                        selectedConversationId
+                      );
+                      setShowComponentSelector(false);
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: '#fff',
+                      border: '1px solid #6c757d',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                    }}
+                  >
+                    {comp.name}
+                  </button>
+                ))}
+              </>
+            )}
+          </InputToolbox>
+
           <MessageInput
             placeholder="Type here..."
             onSend={(val) => {
-              onSendMessage(val, currentUser.id, selectedConversationId);
+              onSendMessage({ type: 'text', text: val }, currentUser.id, selectedConversationId);
               onTyping(currentUser.id, currentUser.name, selectedConversationId, false);
             }}
             onChange={(val) => {

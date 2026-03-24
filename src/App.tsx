@@ -16,6 +16,19 @@ interface Group {
   members: string[];
 }
 
+// Tipos de contenido que se pueden enviar
+export type MessageContent =
+  | { type: 'text'; text: string }
+  | { type: 'component'; componentType: string; props?: Record<string, unknown> };
+
+// Componentes disponibles para enviar
+export const AVAILABLE_COMPONENTS = [
+  { id: 'button', name: 'Botón', description: 'Botón interactivo' },
+  { id: 'card', name: 'Tarjeta', description: 'Tarjeta de información' },
+  { id: 'alert', name: 'Alerta', description: 'Mensaje de alerta' },
+  { id: 'badge', name: 'Badge', description: 'Etiqueta de estado' },
+] as const;
+
 const GROUPS: Group[] = [
   { id: "group-all", name: "Group chat", avatar: "https://api.dicebear.com/9.x/adventurer/svg?seed=Group", members: ["zoe", "joe", "akane", "eliot"] },
   { id: "group-no-eliot", name: "Without Eliot", avatar: "https://api.dicebear.com/9.x/adventurer/svg?seed=Secret", members: ["zoe", "joe", "akane"] },
@@ -25,7 +38,7 @@ type TypingState = Record<string, { senderId: string; senderName: string } | nul
 type UserStatus = "available" | "unavailable" | "away" | "dnd" | "invisible" | "eager";
 
 function App() {
-  const [messages, setMessages] = useState<{ message: string; senderId: string; receiverId: string; sentTime: string }[]>([]);
+  const [messages, setMessages] = useState<{ content: MessageContent; senderId: string; receiverId: string; sentTime: string }[]>([]);
   const [typingUsers, setTypingUsers] = useState<TypingState>({});
   const [userStatuses, setUserStatuses] = useState<Record<string, UserStatus>>(
     Object.fromEntries(USERS.map(u => [u.id, "available"]))
@@ -35,9 +48,9 @@ function App() {
     setUserStatuses(prev => ({ ...prev, [userId]: status }));
   }, []);
 
-  const handleSendMessage = (text: string, senderId: string, receiverId: string) => {
+  const handleSendMessage = (content: MessageContent, senderId: string, receiverId: string) => {
     const newMessage = {
-      message: text,
+      content,
       senderId,
       receiverId,
       sentTime: new Date().toISOString()
